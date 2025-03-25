@@ -339,6 +339,10 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 				}()
 			}
 			conn.Write(s2cSaved)
+			err := target.SetDeadline(time.Now().Add(time.Second * 60))
+			if err != nil {
+				fmt.Printf("set deadline err: %s\n", err.Error())
+			}
 			io.Copy(underlying, target)
 			// Here is bidirectional direct forwarding:
 			// client ---underlying--- server ---target--- dest
@@ -356,8 +360,19 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 	if hs.c.isHandshakeComplete.Load() {
 		return hs.c, nil
 	}
+	sn := ""
+	var alpn []string
+	var original []byte
+	if hs.clientHello != nil {
+		sn = hs.c.serverName
+		alpn = hs.clientHello.alpnProtocols
+		original = hs.clientHello.original
+	}
+	rawString := strings.Replace(hs.c.rawInput.String(), "\n", "", -1)
+	logging := fmt.Sprintf("IP:%v; SN:%v; ALPN:%+v; Vers:%s; Raw:%s; Original:%q", remoteAddr, sn, alpn, VersionName(hs.c.vers), rawString, original)
+
 	conn.Close()
-	return nil, errors.New("REALITY: processed invalid connection") // TODO: Add details.
+	return nil, errors.New("REALITY: processed invalid connection " + logging) // TODO: Add details.
 
 	/*
 		c := &Conn{
