@@ -110,7 +110,7 @@ func Value(vals ...byte) (value int) {
 // using conn as the underlying transport.
 // The configuration config must be non-nil and must include
 // at least one certificate or else set GetCertificate.
-func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
+func Server(ctx context.Context, conn net.Conn, config *Config, toLog bool) (*Conn, error, string) {
 	remoteAddr := conn.RemoteAddr().String()
 	if config.Show {
 		fmt.Printf("REALITY remoteAddr: %v\n", remoteAddr)
@@ -119,14 +119,14 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 	target, err := config.DialContext(ctx, config.Type, config.Dest)
 	if err != nil {
 		conn.Close()
-		return nil, errors.New("REALITY: failed to dial dest: " + err.Error())
+		return nil, errors.New("REALITY: failed to dial dest: " + err.Error()), ""
 	}
 
 	if config.Xver == 1 || config.Xver == 2 {
 		if _, err = proxyproto.HeaderProxyFromAddrs(config.Xver, conn.RemoteAddr(), conn.LocalAddr()).WriteTo(target); err != nil {
 			target.Close()
 			conn.Close()
-			return nil, errors.New("REALITY: failed to send PROXY protocol: " + err.Error())
+			return nil, errors.New("REALITY: failed to send PROXY protocol: " + err.Error()), ""
 		}
 	}
 
@@ -358,7 +358,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 		fmt.Printf("REALITY remoteAddr: %v\ths.c.handshakeStatus: %v\n", remoteAddr, hs.c.isHandshakeComplete.Load())
 	}
 	if hs.c.isHandshakeComplete.Load() {
-		return hs.c, nil
+		return hs.c, nil, ""
 	}
 	sn := ""
 	var alpn []string
@@ -372,7 +372,7 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 	logging := fmt.Sprintf("IP:%v; SN:%v; ALPN:%+v; Vers:%s; Raw:%s; Original:%q", remoteAddr, sn, alpn, VersionName(hs.c.vers), rawString, original)
 
 	conn.Close()
-	return nil, errors.New("REALITY: processed invalid connection " + logging) // TODO: Add details.
+	return nil, errors.New("REALITY: processed invalid connection"), logging // TODO: Add details.
 
 	/*
 		c := &Conn{
@@ -442,7 +442,7 @@ func NewListener(inner net.Listener, config *Config) net.Listener {
 				}
 				go func() {
 					defer recover()
-					c, err = Server(context.Background(), c, l.config)
+					c, err, _ = Server(context.Background(), c, l.config, false)
 					if err == nil {
 						l.conns <- c
 					}
